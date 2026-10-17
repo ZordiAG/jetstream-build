@@ -1,0 +1,44 @@
+name: JetStream APK
+
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          repository: android/tv-samples
+          path: tv-samples
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Build release APK
+        run: |
+          DIR=$(dirname "$(find . -maxdepth 3 -name gradlew -path '*JetStream*' | head -1)")
+          echo "Project: $DIR"
+          cd "$DIR"
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Sign APK
+        run: |
+          APK=$(find . -path '*build/outputs/apk/release/*.apk' | head -1)
+          echo "APK: $APK"
+          keytool -genkeypair -keystore demo.jks -storepass demo123 -keypass demo123 \
+            -alias demo -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=JetStream Demo"
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/zipalign" -f 4 "$APK" aligned.apk
+          "$BT/apksigner" sign --ks demo.jks --ks-pass pass:demo123 --out JetStream-release.apk aligned.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JetStream-release
+          path: JetStream-release.apk
